@@ -5,40 +5,24 @@ from docx import Document
 from docx.shared import Inches
 
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, Image, Spacer
-from reportlab.lib import colors
-
-from docx import Document
-from docx.shared import Inches
+from reportlab.platypus import SimpleDocTemplate, Table, Image, Spacer, Paragraph, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
 
 PAGE_WIDTH, PAGE_HEIGHT = A4
 
+VISIT_TYPES = [
+    "RESIDENCE",
+    "EMPLOYMENT / BUSINESS",
+    "RESI CUM OFFICE",
+    "Others"
+]
 
-# ---------- IMAGE RESIZE (PDF) ---------- #
+def safe_name(text):
+    return text.replace("/", "_").replace(" ", "_")
 
-def get_resized_image(path):
-    img = Image(path)
+# ---------------- PDF ---------------- #
 
-    max_width = PAGE_WIDTH / 2 - 40
-    max_height = PAGE_HEIGHT / 2 - 40
-
-    ratio = min(
-        max_width / img.drawWidth,
-        max_height / img.drawHeight
-    )
-
-    img.drawWidth *= ratio
-    img.drawHeight *= ratio
-    img.hAlign = "CENTER"
-
-    return img
-
-
-# ---------- PDF GENERATION ---------- #
-
-def generate_pdf(image_paths, visit_type, output_path):
+def generate_pdf(visit_images, output_path):
 
     LEFT = 40
     RIGHT = 40
@@ -57,9 +41,6 @@ def generate_pdf(image_paths, visit_type, output_path):
     styles = getSampleStyleSheet()
     elements = []
 
-    elements.append(Paragraph(f"<b>Visit Type: {visit_type}</b>", styles["Title"]))
-    elements.append(Spacer(1,15))
-
     usable_width = PAGE_WIDTH - LEFT - RIGHT
     usable_height = PAGE_HEIGHT - TOP - BOTTOM
 
@@ -73,129 +54,164 @@ def generate_pdf(image_paths, visit_type, output_path):
         img.drawHeight *= scale
         return img
 
-    for i in range(0,len(image_paths),4):
+    first_section = True
 
-        batch = image_paths[i:i+4]
+    for visit, images in visit_images.items():
 
-        row1,row2=[],[]
+        if not images:
+            continue
 
-        for j,p in enumerate(batch):
-            if j<2:
-                row1.append(resize(p))
-            else:
-                row2.append(resize(p))
+        if not first_section:
+            elements.append(PageBreak())
 
-        while len(row1)<2: row1.append("")
-        while len(row2)<2: row2.append("")
+        first_section = False
 
-        t = Table([row1,row2],colWidths=usable_width/2)
+        title = visit if visit == "Others" else f"{visit} VISIT"
+        elements.append(Paragraph(f"<b>{title}</b>", styles["Title"]))
 
-        t.setStyle([
-            ("ALIGN",(0,0),(-1,-1),"CENTER"),
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
-            ("LEFTPADDING",(0,0),(-1,-1),6),
-            ("RIGHTPADDING",(0,0),(-1,-1),6),
-            ("TOPPADDING",(0,0),(-1,-1),6),
-            ("BOTTOMPADDING",(0,0),(-1,-1),6),
-        ])
+        elements.append(Spacer(1,15))
 
-        elements.append(t)
-        elements.append(PageBreak())
+        for i in range(0,len(images),4):
+
+            batch = images[i:i+4]
+
+            row1,row2=[],[]
+
+            for j,p in enumerate(batch):
+                if j<2:
+                    row1.append(resize(p))
+                else:
+                    row2.append(resize(p))
+
+            while len(row1)<2: row1.append("")
+            while len(row2)<2: row2.append("")
+
+            t = Table([row1,row2],colWidths=usable_width/2)
+
+            t.setStyle([
+                ("ALIGN",(0,0),(-1,-1),"CENTER"),
+                ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+                ("LEFTPADDING",(0,0),(-1,-1),6),
+                ("RIGHTPADDING",(0,0),(-1,-1),6),
+                ("TOPPADDING",(0,0),(-1,-1),6),
+                ("BOTTOMPADDING",(0,0),(-1,-1),6),
+            ])
+
+            elements.append(t)
+            elements.append(Spacer(1,20))
 
     doc.build(elements)
 
 
-# ---------- WORD GENERATION ---------- #
+# ---------------- WORD ---------------- #
 
-def generate_word(image_paths, visit_type, output_path):
+def generate_word(visit_images, output_path):
 
     doc = Document()
 
-    doc.add_heading(f"Visit Type: {visit_type}", level=1)
-
     IMG_SIZE = Inches(3)
 
-    for i in range(0, len(image_paths), 4):
+    first_section = True
 
-        batch = image_paths[i:i+4]
+    for visit, images in visit_images.items():
 
-        table = doc.add_table(rows=2, cols=2)
-        table.autofit = False
+        if not images:
+            continue
 
-        for row in table.rows:
-            for cell in row.cells:
-                cell.width = Inches(3.2)
+        if not first_section:
+            doc.add_page_break()
 
-        idx = 0
+        first_section = False
 
-        for r in range(2):
-            for c in range(2):
-                if idx < len(batch):
-                    table.rows[r].cells[c].paragraphs[0].add_run().add_picture(
-                        batch[idx],
-                        width=IMG_SIZE
-                    )
-                idx += 1
+        title = visit if visit == "Others" else f"{visit} VISIT"
+        doc.add_heading(title, level=1)
 
-        doc.add_page_break()
+        for i in range(0,len(images),4):
+
+            batch = images[i:i+4]
+
+            table = doc.add_table(rows=2, cols=2)
+            table.autofit = False
+
+            for row in table.rows:
+                for cell in row.cells:
+                    cell.width = Inches(3.2)
+
+            idx = 0
+
+            for r in range(2):
+                for c in range(2):
+                    if idx < len(batch):
+                        table.rows[r].cells[c].paragraphs[0].add_run().add_picture(
+                            batch[idx],
+                            width=IMG_SIZE
+                        )
+                    idx += 1
 
     doc.save(output_path)
 
-# ---------- STREAMLIT UI ---------- #
+
+# ---------------- STREAMLIT UI ---------------- #
 
 st.set_page_config(layout="centered")
 st.title("📄 Images → Document Generator")
 
-visit_type = st.selectbox(
-    "Select Visit Type",
-    [
-        "RESIDENCE VISIT",
-        "EMPLOYMENT / BUSINESS VISIT",
-        "RESI CUM OFFICE VISIT"
-    ]
-)
+filename = st.text_input("Enter output filename (without extension)", "visit_report")
 
-output_format = st.radio(
-    "Select Output Format",
-    ["PDF", "Word", "Both"]
-)
+output_format = st.radio("Select Output Format", ["PDF","Word","Both"])
 
-uploaded_files = st.file_uploader(
-    "Upload Images",
-    type=["jpg","jpeg","png"],
-    accept_multiple_files=True
-)
+visit_uploads = {}
 
-if uploaded_files:
+for visit in VISIT_TYPES:
+    visit_uploads[visit] = st.file_uploader(
+        f"Upload images for {visit}",
+        type=["jpg","jpeg","png"],
+        accept_multiple_files=True,
+        key=visit
+    )
 
-    st.success(f"{len(uploaded_files)} images uploaded")
+if st.button("Generate File"):
 
     temp_dir = tempfile.mkdtemp()
-    image_paths = []
 
-    for file in uploaded_files:
-        path = os.path.join(temp_dir, file.name)
-        with open(path,"wb") as f:
-            f.write(file.getbuffer())
-        image_paths.append(path)
+    visit_images = {}
 
-    if st.button("Generate File"):
+    total_images = 0
 
-        pdf_path = os.path.join(temp_dir,"output.pdf")
-        word_path = os.path.join(temp_dir,"output.docx")
+    for visit, files in visit_uploads.items():
 
-        if output_format in ["PDF","Both"]:
-            generate_pdf(image_paths, visit_type, pdf_path)
+        paths = []
 
-        if output_format in ["Word","Both"]:
-            generate_word(image_paths, visit_type, word_path)
+        if files:
+            for file in files:
+                safe_visit = safe_name(visit)
+                path = os.path.join(temp_dir, f"{safe_visit}_{file.name}")
+                with open(path,"wb") as f:
+                    f.write(file.getbuffer())
+                paths.append(path)
 
-        st.success("Document Generated Successfully ✅")
+        visit_images[visit] = paths
+        total_images += len(paths)
 
-        if output_format in ["PDF","Both"]:
-            with open(pdf_path,"rb") as f:
-                st.download_button("⬇ Download PDF",f,file_name="images.pdf")
+    if total_images == 0:
+        st.error("Please upload at least one image.")
+        st.stop()
 
-        if output_format in ["Word","Both"]:
-            with open(word_path,"rb") as f:
-                st.download_button("⬇ Download Word",f,file_name="images.docx")
+    pdf_path = os.path.join(temp_dir,f"{filename}.pdf")
+    word_path = os.path.join(temp_dir,f"{filename}.docx")
+
+    if output_format in ["PDF","Both"]:
+        generate_pdf(visit_images, pdf_path)
+
+    if output_format in ["Word","Both"]:
+        generate_word(visit_images, word_path)
+
+    st.success("Document Generated Successfully ✅")
+
+    if output_format in ["PDF","Both"]:
+        with open(pdf_path,"rb") as f:
+            st.download_button("⬇ Download PDF",f,file_name=f"{filename}.pdf")
+
+    if output_format in ["Word","Both"]:
+        with open(word_path,"rb") as f:
+            st.download_button("⬇ Download Word",f,file_name=f"{filename}.docx")
