@@ -68,25 +68,26 @@ def generate_pdf(visit_images, output_path):
 
         title = visit if visit == "Others" else f"{visit} VISIT"
         elements.append(Paragraph(f"<b>{title}</b>", styles["Title"]))
+        elements.append(Spacer(1, 15))
 
-        elements.append(Spacer(1,15))
+        batches = list(range(0, len(images), 4))
 
-        for i in range(0,len(images),4):
+        for idx, i in enumerate(batches):
 
             batch = images[i:i+4]
 
-            row1,row2=[],[]
+            row1, row2 = [], []
 
-            for j,p in enumerate(batch):
-                if j<2:
+            for j, p in enumerate(batch):
+                if j < 2:
                     row1.append(resize(p))
                 else:
                     row2.append(resize(p))
 
-            while len(row1)<2: row1.append("")
-            while len(row2)<2: row2.append("")
+            while len(row1) < 2: row1.append("")
+            while len(row2) < 2: row2.append("")
 
-            t = Table([row1,row2],colWidths=usable_width/2)
+            t = Table([row1, row2], colWidths=usable_width/2)
 
             t.setStyle([
                 ("ALIGN",(0,0),(-1,-1),"CENTER"),
@@ -98,10 +99,12 @@ def generate_pdf(visit_images, output_path):
             ])
 
             elements.append(t)
-            elements.append(Spacer(1,20))
+
+            # Spacer ONLY if another batch follows
+            if idx != len(batches) - 1:
+                elements.append(Spacer(1, 20))
 
     doc.build(elements)
-
 
 # ---------------- WORD ---------------- #
 
